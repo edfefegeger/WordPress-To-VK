@@ -7,12 +7,6 @@ require_once __DIR__ . '/functions.php';
 
 /**
  * Выполняет запрос к WordPress REST API
- *
- * @param string      $endpoint  Например '/posts' или '/media'
- * @param array       $body      Тело запроса (для POST/PUT)
- * @param string      $method    'GET', 'POST', 'PUT'
- * @param array       $extra_headers  Дополнительные заголовки
- * @return array|null Распакованный JSON или null при ошибке
  */
 function wp_api(string $endpoint, array $body = [], string $method = 'POST', array $extra_headers = []): ?array
 {
@@ -63,11 +57,7 @@ function wp_api(string $endpoint, array $body = [], string $method = 'POST', arr
 }
 
 /**
- * Загружает изображение (binary) в медиатеку WordPress
- *
- * @param string $image_data  Содержимое файла
- * @param string $filename    Имя файла без расширения
- * @return int|null           ID загруженного медиафайла
+ * Загружает изображение в медиатеку WordPress
  */
 function wp_upload_image(string $image_data, string $filename): ?int
 {
@@ -119,27 +109,38 @@ function wp_upload_image(string $image_data, string $filename): ?int
 }
 
 /**
- * Создаёт новый пост в WordPress
- *
- * @param string   $title           Заголовок
- * @param string   $content         Содержимое
- * @param int[]    $category_ids    Массив ID категорий
- * @param int|null $featured_image  ID изображения-обложки
- * @param string   $status          'publish' | 'draft'
- * @return int|null ID созданного поста
+ * Создаёт новый пост в WordPress.
+ * Все картинки (кроме обложки) вставляются прямо в тело поста через <img> теги.
  */
 function wp_create_post(
     string $title,
     string $content,
-    array  $category_ids    = [],
-    ?int   $featured_image  = null,
-    string $status          = 'publish'
+    array  $category_ids   = [],
+    ?int   $featured_image = null,
+    string $status         = 'publish',
+    array  $extra_media_ids = []  // ← дополнительные картинки для вставки в тело
 ): ?int {
-    log_info("WordPress: создаём пост \"" . mb_substr($title, 0, 60) . "…\"");
+    log_info("WordPress: создаём пост \"" . mb_substr($title, 0, 60) . "\"");
+
+    // Форматируем текст — переносы строк → <br>
+    $formatted_content = nl2br(htmlspecialchars($content, ENT_QUOTES, 'UTF-8'));
+
+    // Добавляем дополнительные картинки прямо в тело поста
+    if (!empty($extra_media_ids)) {
+        $formatted_content .= "\n\n<!-- Изображения из ВК -->\n";
+        foreach ($extra_media_ids as $media_id) {
+            $media_url = wp_get_media_url($media_id);
+            if ($media_url) {
+                $formatted_content .= '<figure class="wp-block-image">';
+                $formatted_content .= '<img src="' . esc_url($media_url) . '" />';
+                $formatted_content .= '</figure>' . "\n";
+            }
+        }
+    }
 
     $body = [
         'title'   => $title,
-        'content' => nl2br(htmlspecialchars($content, ENT_QUOTES, 'UTF-8')),
+        'content' => $formatted_content,
         'status'  => $status,
     ];
 
@@ -165,11 +166,24 @@ function wp_create_post(
 }
 
 /**
- * Добавляет изображения-вложения к посту через медиатеку
- * (обновляет поле post_parent у медиафайлов)
- *
- * @param int   $post_id
- * @param int[] $media_ids
+ * Получает публичный URL медиафайла по его ID
+ */
+function wp_get_media_url(int $media_id): ?string
+{
+    $data = wp_api("/media/$media_id", [], 'GET');
+    return $data['source_url'] ?? null;
+}
+
+/**
+ * Экранирует URL для вставки в HTML
+ */
+function esc_url(string $url): string
+{
+    return htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+}
+
+/**
+ * Привязывает медиафайлы к посту (обновляет post_parent)
  */
 function wp_attach_images_to_post(int $post_id, array $media_ids): void
 {
@@ -183,7 +197,6 @@ function wp_attach_images_to_post(int $post_id, array $media_ids): void
 
 /**
  * Проверяет подключение к WordPress REST API
- * Возвращает имя пользователя или null при ошибке
  */
 function wp_check_connection(): ?string
 {
