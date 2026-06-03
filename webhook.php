@@ -133,6 +133,14 @@ foreach ($image_urls as $idx => $url) {
 
 // ── 10. Категории по хештегам ────────────────────────────────
 $text         = $post['text'] ?? '';
+
+// Если в тексте нет хештегов — пропускаем пост
+$hashtags = extract_hashtags($text);
+if (empty($hashtags)) {
+    log_info("Webhook: в тексте нет хештегов — пропускаем пост #$post_id");
+    exit;
+}
+
 $category_ids = hashtags_to_category_ids($text);
 
 // ── 11. Создаём пост в WordPress ─────────────────────────────
