@@ -100,10 +100,22 @@ if (!$post || !vk_post_is_valid($post)) {
     exit;
 }
 
-// ── 9. Скачиваем и загружаем ВСЕ изображения ────────────────
+// ── 9. Проверяем хештеги ДО загрузки картинок ───────────────
+// Если хештегов нет — выходим сразу, картинки в медиатеку не попадают
+$text     = $post['text'] ?? '';
+$hashtags = extract_hashtags($text);
+
+if (empty($hashtags)) {
+    log_info("Webhook: в посте #$post_id нет хештегов — пропускаем, картинки не загружаем");
+    exit;
+}
+
+$category_ids = hashtags_to_category_ids($text);
+
+// ── 10. Только теперь загружаем картинки ─────────────────────
 $image_urls     = vk_extract_images($post);
-$featured_id    = null;   // обложка (первая картинка)
-$attachment_ids = [];     // остальные картинки
+$featured_id    = null;
+$attachment_ids = [];
 
 log_info("Webhook: найдено изображений: " . count($image_urls));
 
@@ -123,25 +135,13 @@ foreach ($image_urls as $idx => $url) {
     }
 
     if ($idx === 0) {
-        $featured_id = $media_id;  // первая → обложка
+        $featured_id = $media_id;
         log_info("Изображение #1 установлено как обложка (ID: $media_id)");
     } else {
-        $attachment_ids[] = $media_id;  // остальные → вложения
+        $attachment_ids[] = $media_id;
         log_info("Изображение #" . ($idx + 1) . " добавлено как вложение (ID: $media_id)");
     }
 }
-
-// ── 10. Категории по хештегам ────────────────────────────────
-$text         = $post['text'] ?? '';
-
-// Если в тексте нет хештегов — пропускаем пост
-$hashtags = extract_hashtags($text);
-if (empty($hashtags)) {
-    log_info("Webhook: в тексте нет хештегов — пропускаем пост #$post_id");
-    exit;
-}
-
-$category_ids = hashtags_to_category_ids($text);
 
 // ── 11. Создаём пост в WordPress ─────────────────────────────
 $wp_id = wp_create_post(
